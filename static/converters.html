@@ -1,0 +1,92 @@
+  <div class="shell">
+    <nav class="nav">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>Urmi Text Tools</span>
+      </div>
+      <div class="nav-links">
+        <a class="active" data-nav="converters" href="/">Конвертеры</a>
+        <a data-nav="cleaner" href="/Cleaner">Очистка текста</a>
+      </div>
+    </nav>
+
+    <header class="hero">
+      <h1>Конвертеры письменностей</h1>
+      <p>
+        Переводит текст между системами записи христианского урмийского:
+        раскладкой экспедиции, Khan&nbsp;2016, Церетели&nbsp;1964,
+        «Новым алфавитом» и кириллицей. Знак <strong>+</strong> при конвертации
+        всегда сохраняется. Можно ввести текст в окно или загрузить файл
+        (txt, csv, docx, xlsx, pdf, flextext) и скачать результат в том же формате.
+      </p>
+    </header>
+
+    <section class="panel">
+      <div class="mode-tabs" role="tablist">
+        <button type="button" class="active" data-mode="text">Текст в окне</button>
+        <button type="button" data-mode="file">Файл</button>
+      </div>
+
+      <div class="controls controls-convert">
+        <div class="field">
+          <label for="source">Из системы</label>
+          <select id="source"></select>
+        </div>
+        <div class="field swap-field">
+          <label>&nbsp;</label>
+          <button type="button" class="btn btn-ghost btn-swap" id="swapBtn" title="Поменять системы" aria-label="Поменять системы">⇄</button>
+        </div>
+        <div class="field">
+          <label for="target">В систему</label>
+          <select id="target"></select>
+        </div>
+      </div>
+
+      <div class="text-panel active" id="textPanel">
+        <div class="io-grid">
+          <div class="field">
+            <label for="input">Ввод</label>
+            <textarea id="input" placeholder="Вставьте текст…"></textarea>
+          </div>
+          <div class="field">
+            <label for="output">Результат</label>
+            <textarea id="output" readonly placeholder="Здесь появится конвертированный текст…"></textarea>
+          </div>
+        </div>
+        <div class="actions">
+          <button type="button" class="btn btn-primary" id="convertBtn">Конвертировать</button>
+          <button type="button" class="btn btn-ghost" id="copyBtn">Скопировать результат</button>
+          <button type="button" class="btn btn-ghost" id="clearBtn">Очистить</button>
+        </div>
+      </div>
+
+      <div class="file-panel" id="filePanel">
+        <div class="file-box">
+          <p>Загрузите <strong>txt, csv, docx, xlsx, pdf</strong> или <strong>flextext</strong></p>
+          <input type="file" id="fileInput" accept=".txt,.csv,.docx,.xlsx,.pdf,.flextext,.xml" />
+        </div>
+        <div class="actions">
+          <button type="button" class="btn btn-primary" id="convertFileBtn">Конвертировать и скачать</button>
+        </div>
+        <p class="hint">
+          Для docx / xlsx / pdf результат может скачаться как .txt (текст извлечён и обработан).
+          txt, csv и flextext сохраняют формат.
+        </p>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Таблица соответствий</h2>
+      <p>По этой таблице работает конвертер для всех письменностей.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr id="tableHead"></tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <div class="toast" id="toast" role="status"></div>
