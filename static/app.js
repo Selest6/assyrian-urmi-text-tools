@@ -56,13 +56,19 @@ function escapeHtml(s) {
 
 function applyNav() {
   const nav = window.URMI_NAV || {};
-  document.querySelectorAll("[data-nav='converters']").forEach((a) => {
-    a.href = nav.converters || "/";
-    if (nav.target) a.target = nav.target;
-  });
-  document.querySelectorAll("[data-nav='cleaner']").forEach((a) => {
-    a.href = nav.cleaner || "/Cleaner";
-    if (nav.target) a.target = nav.target;
+  const routes = {
+    converters: nav.converters || "/",
+    cleaner: nav.cleaner || "/Cleaner",
+  };
+  document.querySelectorAll("[data-nav]").forEach((a) => {
+    const url = routes[a.dataset.nav];
+    if (!url) return;
+    a.href = url;
+    a.target = "_self";
+    a.addEventListener("click", (event) => {
+      event.preventDefault();
+      window.location.assign(url);
+    });
   });
 }
 
@@ -159,7 +165,7 @@ function initConvertersPage() {
   applyNav();
   const meta = window.URMI_RUNTIME;
   const source = document.getElementById("source");
-  const target = document.getElementById("target");
+  const target = document.getElementById("targetSystem");
   fillSystemSelect(source, meta.systems, "expedition");
   fillSystemSelect(target, meta.systems, "khan");
   wireModeTabs();

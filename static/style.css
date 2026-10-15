@@ -28,6 +28,13 @@
 
 html {
   scroll-behavior: smooth;
+  min-height: 100%;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, #ffe8d8 0%, transparent 55%),
+    radial-gradient(900px 500px at 95% 5%, #d9f3ec 0%, transparent 50%),
+    radial-gradient(700px 480px at 70% 100%, #e7ddf7 0%, transparent 45%),
+    linear-gradient(165deg, var(--bg0), var(--bg1) 45%, var(--bg2));
+  background-attachment: fixed;
 }
 
 body {
@@ -35,12 +42,7 @@ body {
   min-height: 100vh;
   font-family: var(--font);
   color: var(--ink);
-  background:
-    radial-gradient(1200px 600px at 10% -10%, #ffe8d8 0%, transparent 55%),
-    radial-gradient(900px 500px at 95% 5%, #d9f3ec 0%, transparent 50%),
-    radial-gradient(700px 480px at 70% 100%, #e7ddf7 0%, transparent 45%),
-    linear-gradient(165deg, var(--bg0), var(--bg1) 45%, var(--bg2));
-  background-attachment: fixed;
+  background: transparent;
 }
 
 body::before {
