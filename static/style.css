@@ -61,6 +61,10 @@ a {
   text-decoration: none;
 }
 
+.urmi-page[hidden] {
+  display: none !important;
+}
+
 .shell {
   position: relative;
   z-index: 1;

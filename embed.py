@@ -117,9 +117,15 @@ def render_site(page: str) -> None:
     css = _read("style.css")
     engine = _read("engine.js")
     app_js = _read("app.js")
-    body = _read(f"{page}.html")
+    # Both tools live in one document. Switching tabs only toggles visibility,
+    # so Streamlit does not reload and the screen does not flash white.
+    def _pane(name: str) -> str:
+        hidden = "" if name == page else " hidden"
+        return f'<div class="urmi-page" data-page="{name}"{hidden}>\n{_read(f"{name}.html")}\n</div>'
+
+    body = _pane("converters") + "\n" + _pane("cleaner")
     runtime = json.dumps(build_runtime(), ensure_ascii=False).replace("<", "\\u003c")
-    init = "initConvertersPage();" if page == "converters" else "initCleanerPage();"
+    init = "initConvertersPage();\ninitCleanerPage();"
     # Inline scripts that contain tags like "</td>" are stripped by Streamlit's
     # sanitizer. Ship the program as base64 so the page script stays intact.
     program = f"""

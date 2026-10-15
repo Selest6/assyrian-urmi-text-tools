@@ -1,7 +1,11 @@
 /* UI logic for converters + cleaner (client-side, Streamlit-embeddable) */
 
-function toast(msg) {
-  const el = document.getElementById("toast");
+function byId(root, id) {
+  return root.querySelector("#" + id);
+}
+
+function toast(root, msg) {
+  const el = byId(root, "toast");
   if (!el) return;
   el.textContent = msg;
   el.classList.add("show");
@@ -20,10 +24,10 @@ function fillSystemSelect(selectEl, systems, preferredId) {
   if (preferredId) selectEl.value = preferredId;
 }
 
-function wireModeTabs() {
-  const tabs = document.querySelectorAll(".mode-tabs button");
-  const textPanel = document.getElementById("textPanel");
-  const filePanel = document.getElementById("filePanel");
+function wireModeTabs(root) {
+  const tabs = root.querySelectorAll(".mode-tabs button");
+  const textPanel = byId(root, "textPanel");
+  const filePanel = byId(root, "filePanel");
   tabs.forEach((btn) => {
     btn.addEventListener("click", () => {
       tabs.forEach((b) => b.classList.remove("active"));
@@ -54,27 +58,31 @@ function escapeHtml(s) {
     .replaceAll('"', "&quot;");
 }
 
+function showPage(name) {
+  const pages = document.querySelectorAll(".urmi-page");
+  if (!pages.length) return;
+  pages.forEach((el) => {
+    el.hidden = el.dataset.page !== name;
+  });
+  const scroller = document.querySelector('[data-testid="stMain"]');
+  if (scroller) scroller.scrollTop = 0;
+}
+
 function applyNav() {
-  const nav = window.URMI_NAV || {};
-  const routes = {
-    converters: nav.converters || "/",
-    cleaner: nav.cleaner || "/Cleaner",
-  };
   document.querySelectorAll("[data-nav]").forEach((a) => {
-    const url = routes[a.dataset.nav];
-    if (!url) return;
-    a.href = url;
-    a.target = "_self";
+    if (a.dataset.bound === "1") return;
+    a.dataset.bound = "1";
     a.addEventListener("click", (event) => {
       event.preventDefault();
-      window.location.assign(url);
+      event.stopPropagation();
+      showPage(a.dataset.nav);
     });
   });
 }
 
-function renderTable(table) {
-  const head = document.getElementById("tableHead");
-  const body = document.getElementById("tableBody");
+function renderTable(root, table) {
+  const head = byId(root, "tableHead");
+  const body = byId(root, "tableBody");
   if (!head || !body) return;
   const cols = [
     { key: "expedition", label: "Раскладка экспедиции" },
@@ -118,11 +126,11 @@ function stripStressJs(s) {
   return s.normalize("NFD").replace(/\u0301/g, "").normalize("NFC");
 }
 
-function renderAlphabet(systemId) {
-  const box = document.getElementById("alphabetChips");
+function renderAlphabet(root, systemId) {
+  const box = byId(root, "alphabetChips");
   const meta = window.URMI_RUNTIME;
   if (!meta || !box) return;
-  const keepStressEl = document.getElementById("keepStress");
+  const keepStressEl = byId(root, "keepStress");
   let glyphs =
     keepStressEl && !keepStressEl.checked
       ? meta.alphabets_nostress[systemId] || []
@@ -162,42 +170,42 @@ function loadCdnLibs() {
 }
 
 function initConvertersPage() {
+  const root = document.querySelector('.urmi-page[data-page="converters"]') || document;
   applyNav();
   const meta = window.URMI_RUNTIME;
-  const source = document.getElementById("source");
-  const target = document.getElementById("targetSystem");
+  const source = byId(root, "source");
+  const target = byId(root, "targetSystem");
   fillSystemSelect(source, meta.systems, "expedition");
   fillSystemSelect(target, meta.systems, "khan");
-  wireModeTabs();
-  renderTable(meta.table);
+  wireModeTabs(root);
+  renderTable(root, meta.table);
   loadCdnLibs();
 
-  document.getElementById("swapBtn").addEventListener("click", () => {
+  byId(root, "swapBtn").addEventListener("click", () => {
     const a = source.value;
     source.value = target.value;
     target.value = a;
   });
 
-  document.getElementById("convertBtn").addEventListener("click", () => {
-    const text = document.getElementById("input").value;
-    document.getElementById("output").value = convertText(text, source.value, target.value);
-    toast("Готово");
+  byId(root, "convertBtn").addEventListener("click", () => {
+    byId(root, "output").value = convertText(byId(root, "input").value, source.value, target.value);
+    toast(root, "Готово");
   });
 
-  document.getElementById("copyBtn").addEventListener("click", async () => {
-    await navigator.clipboard.writeText(document.getElementById("output").value);
-    toast("Скопировано");
+  byId(root, "copyBtn").addEventListener("click", async () => {
+    await navigator.clipboard.writeText(byId(root, "output").value);
+    toast(root, "Скопировано");
   });
 
-  document.getElementById("clearBtn").addEventListener("click", () => {
-    document.getElementById("input").value = "";
-    document.getElementById("output").value = "";
+  byId(root, "clearBtn").addEventListener("click", () => {
+    byId(root, "input").value = "";
+    byId(root, "output").value = "";
   });
 
-  document.getElementById("convertFileBtn").addEventListener("click", async () => {
-    const input = document.getElementById("fileInput");
+  byId(root, "convertFileBtn").addEventListener("click", async () => {
+    const input = byId(root, "fileInput");
     if (!input.files || !input.files[0]) {
-      toast("Выберите файл");
+      toast(root, "Выберите файл");
       return;
     }
     const file = input.files[0];
@@ -210,53 +218,54 @@ function initConvertersPage() {
       );
       downloadBlob(blob, name);
       if (name.endsWith(".txt") && !file.name.toLowerCase().endsWith(".txt")) {
-        toast("Скачан текст (.txt) — бинарный формат упрощён");
+        toast(root, "Скачан текст (.txt) — бинарный формат упрощён");
       } else {
-        toast("Файл скачан");
+        toast(root, "Файл скачан");
       }
     } catch (e) {
-      toast(e.message || "Ошибка обработки файла");
+      toast(root, e.message || "Ошибка обработки файла");
     }
   });
 }
 
 function initCleanerPage() {
+  const root = document.querySelector('.urmi-page[data-page="cleaner"]') || document;
   applyNav();
   const meta = window.URMI_RUNTIME;
-  const system = document.getElementById("system");
-  const keepStress = document.getElementById("keepStress");
+  const system = byId(root, "system");
+  const keepStress = byId(root, "keepStress");
   fillSystemSelect(system, meta.systems, "expedition");
-  wireModeTabs();
-  renderAlphabet(system.value);
+  wireModeTabs(root);
+  renderAlphabet(root, system.value);
   loadCdnLibs();
 
-  system.addEventListener("change", () => renderAlphabet(system.value));
-  keepStress.addEventListener("change", () => renderAlphabet(system.value));
+  system.addEventListener("change", () => renderAlphabet(root, system.value));
+  keepStress.addEventListener("change", () => renderAlphabet(root, system.value));
 
-  document.getElementById("cleanBtn").addEventListener("click", () => {
-    document.getElementById("output").value = cleanText(
-      document.getElementById("input").value,
+  byId(root, "cleanBtn").addEventListener("click", () => {
+    byId(root, "output").value = cleanText(
+      byId(root, "input").value,
       system.value,
-      document.getElementById("keepWs").checked,
+      byId(root, "keepWs").checked,
       keepStress.checked
     );
-    toast("Готово");
+    toast(root, "Готово");
   });
 
-  document.getElementById("copyBtn").addEventListener("click", async () => {
-    await navigator.clipboard.writeText(document.getElementById("output").value);
-    toast("Скопировано");
+  byId(root, "copyBtn").addEventListener("click", async () => {
+    await navigator.clipboard.writeText(byId(root, "output").value);
+    toast(root, "Скопировано");
   });
 
-  document.getElementById("clearBtn").addEventListener("click", () => {
-    document.getElementById("input").value = "";
-    document.getElementById("output").value = "";
+  byId(root, "clearBtn").addEventListener("click", () => {
+    byId(root, "input").value = "";
+    byId(root, "output").value = "";
   });
 
-  document.getElementById("cleanFileBtn").addEventListener("click", async () => {
-    const input = document.getElementById("fileInput");
+  byId(root, "cleanFileBtn").addEventListener("click", async () => {
+    const input = byId(root, "fileInput");
     if (!input.files || !input.files[0]) {
-      toast("Выберите файл");
+      toast(root, "Выберите файл");
       return;
     }
     try {
@@ -267,15 +276,15 @@ function initCleanerPage() {
           cleanText(
             t,
             system.value,
-            document.getElementById("keepWs").checked,
+            byId(root, "keepWs").checked,
             keepStress.checked
           ),
         "cleaned"
       );
       downloadBlob(blob, name);
-      toast("Файл скачан");
+      toast(root, "Файл скачан");
     } catch (e) {
-      toast(e.message || "Ошибка обработки файла");
+      toast(root, e.message || "Ошибка обработки файла");
     }
   });
 }
