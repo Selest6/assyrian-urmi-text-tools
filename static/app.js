@@ -217,8 +217,8 @@ function initConvertersPage() {
         "converted"
       );
       downloadBlob(blob, name);
-      if (name.endsWith(".txt") && !file.name.toLowerCase().endsWith(".txt")) {
-        toast(root, "Скачан текст (.txt) — бинарный формат упрощён");
+      if (name.endsWith(".txt") && file.name.toLowerCase().endsWith(".pdf")) {
+        toast(root, "PDF скачан как .txt");
       } else {
         toast(root, "Файл скачан");
       }

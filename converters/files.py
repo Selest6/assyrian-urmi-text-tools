@@ -15,14 +15,12 @@ Transform = Callable[[str], str]
 
 def detect_ext(filename: str) -> str:
     ext = Path(filename).suffix.lower()
-    if ext == ".xml":
-        return ".flextext"
     if ext not in SUPPORTED_EXTENSIONS and ext != ".flextext":
         raise ValueError(
             f"Неподдерживаемый формат: {ext or '(без расширения)'}. "
             f"Допустимо: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
         )
-    return ext if ext != ".xml" else ".flextext"
+    return ext
 
 
 def process_file(filename: str, data: bytes, transform: Transform) -> tuple[bytes, str, str]:
@@ -31,7 +29,7 @@ def process_file(filename: str, data: bytes, transform: Transform) -> tuple[byte
     """
     ext = detect_ext(filename)
     stem = Path(filename).stem
-    out_name = f"{stem}_converted{ext if ext != '.flextext' else '.flextext'}"
+    out_name = f"{stem}_converted{ext}"
 
     if ext == ".txt":
         text = data.decode("utf-8", errors="replace")
@@ -191,32 +189,24 @@ def _register_unicode_font() -> str:
 
 def _process_flextext(data: bytes, transform: Transform, out_name: str) -> tuple[bytes, str, str]:
     """
-    FLEx .flextext is XML. Transform text in <item type="txt"> and similar text nodes,
-    and plain text content of elements that look like transcriptions.
+    FLEx .flextext / .xml: transform only transcription items (<item type="txt">).
+    Glosses, notes and titles are left unchanged.
     """
-    # Preserve XML declaration if present
     raw = data.decode("utf-8", errors="replace")
     try:
         root = ET.fromstring(raw)
     except ET.ParseError:
-        # Not well-formed XML — treat as plain text
         out = transform(raw).encode("utf-8")
-        return out, out_name.replace(".flextext", ".txt"), "text/plain; charset=utf-8"
-
-    text_item_types = {"txt", "gls", "lit", "note", "title"}
+        return out, Path(out_name).with_suffix(".txt").name, "text/plain; charset=utf-8"
 
     for elem in root.iter():
-        tag = _local(elem.tag)
-        if tag == "item":
-            itype = (elem.get("type") or "").lower()
-            if itype in text_item_types or not itype:
-                if elem.text:
-                    elem.text = transform(elem.text)
-        elif tag in {"word", "phrase", "sentence", "paragraph", "text"}:
-            if elem.text and elem.text.strip():
-                elem.text = transform(elem.text)
+        if _local(elem.tag) != "item":
+            continue
+        if (elem.get("type") or "").lower() != "txt":
+            continue
+        if elem.text:
+            elem.text = transform(elem.text)
 
-    # Rebuild with UTF-8 declaration
     xml_body = ET.tostring(root, encoding="unicode")
     if not xml_body.startswith("<?xml"):
         xml_body = '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_body

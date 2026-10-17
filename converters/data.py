@@ -417,6 +417,16 @@ def _normalize_forms(forms: list[str]) -> list[str]:
     return out
 
 
+def _primary_overrides(row: dict[str, Any], prev_idx: int, sid: str, form: str) -> bool:
+    """True when `form` is this row's primary spelling and only an extra of the earlier row."""
+    this_forms = row.get(sid) or []
+    prev_forms = ROWS[prev_idx].get(sid) or []
+    if not this_forms or not prev_forms:
+        return False
+    form_n = _n(form)
+    return form_n == _n(this_forms[0]) and form_n != _n(prev_forms[0])
+
+
 # Build lookup: system -> token -> hub_id (row index)
 def build_maps() -> tuple[
     dict[str, dict[str, int]],
@@ -436,11 +446,12 @@ def build_maps() -> tuple[
             primary = forms[0]
             from_hub[idx][sid] = primary
             for form in forms:
-                # Prefer longer / earlier rows only if not already mapped —
-                # we'll sort tokens by length at match time; for collisions
-                # keep first-registered (earlier phoneme) unless longer token.
+                # Same spelling in two rows: keep the earlier row when both
+                # use it as their primary sign. A later row's primary sign
+                # replaces an earlier row's extra variant (ь is listed after i
+                # for /i/, but it is the only Novyi sign for /ə/).
                 prev = to_hub[sid].get(form)
-                if prev is None:
+                if prev is None or _primary_overrides(row, prev, sid, form):
                     to_hub[sid][form] = idx
                 alphabets[sid].add(form)
 
