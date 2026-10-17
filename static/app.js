@@ -145,6 +145,7 @@ function loadCdnLibs() {
     "https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js",
     "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",
     "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js",
+    "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js",
   ];
   return Promise.all(
     urls.map(
@@ -217,11 +218,7 @@ function initConvertersPage() {
         "converted"
       );
       downloadBlob(blob, name);
-      if (name.endsWith(".txt") && file.name.toLowerCase().endsWith(".pdf")) {
-        toast(root, "PDF скачан как .txt");
-      } else {
-        toast(root, "Файл скачан");
-      }
+      toast(root, "Файл скачан");
     } catch (e) {
       toast(root, e.message || "Ошибка обработки файла");
     }

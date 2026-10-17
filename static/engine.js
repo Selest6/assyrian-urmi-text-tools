@@ -534,11 +534,72 @@ async function transformFile(file, transformFn, suffix) {
       parts.push(content.items.map((it) => it.str).join(" "));
     }
     const converted = transformFn(parts.join("\n"));
+    const outBlob = await buildPdfBlob(converted);
     return {
-      blob: new Blob([converted], { type: "text/plain;charset=utf-8" }),
-      name: `${stem}_${suffix}.txt`,
+      blob: outBlob,
+      name: `${stem}_${suffix}.pdf`,
     };
   }
 
   throw new Error("Неподдерживаемый формат");
+}
+
+function arrayBufferToBinaryString(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return binary;
+}
+
+async function loadPdfUnicodeFont() {
+  if (window._urmiPdfFontBinary) return window._urmiPdfFontBinary;
+  const url =
+    "https://cdn.jsdelivr.net/npm/dejavu-fonts-ttf@2.37.3/ttf/DejaVuSans.ttf";
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Не удалось загрузить шрифт для PDF");
+  const binary = arrayBufferToBinaryString(await res.arrayBuffer());
+  window._urmiPdfFontBinary = binary;
+  return binary;
+}
+
+async function buildPdfBlob(text) {
+  const jspdfNS = window.jspdf;
+  if (!jspdfNS || !jspdfNS.jsPDF) {
+    throw new Error("Не удалось загрузить обработчик PDF (запись)");
+  }
+  const fontBinary = await loadPdfUnicodeFont();
+  const doc = new jspdfNS.jsPDF({ unit: "pt", format: "a4" });
+  const fontFile = "DejaVuSans.ttf";
+  const fontName = "DejaVuSans";
+  doc.addFileToVFS(fontFile, fontBinary);
+  doc.addFont(fontFile, fontName, "normal");
+  doc.setFont(fontName, "normal");
+  doc.setFontSize(11);
+
+  const margin = 40;
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const maxWidth = pageWidth - margin * 2;
+  const lineHeight = 14;
+  let y = margin + 8;
+  const paragraphs = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+
+  for (const paragraph of paragraphs) {
+    const lines = doc.splitTextToSize(paragraph.length ? paragraph : " ", maxWidth);
+    for (const line of lines) {
+      if (y + lineHeight > pageHeight - margin) {
+        doc.addPage();
+        doc.setFont(fontName, "normal");
+        doc.setFontSize(11);
+        y = margin + 8;
+      }
+      doc.text(line, margin, y);
+      y += lineHeight;
+    }
+  }
+
+  return doc.output("blob");
 }
