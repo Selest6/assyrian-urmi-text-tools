@@ -137,17 +137,31 @@ def render_site(page: str) -> None:
     # sanitizer. Ship the program as base64 so the page script stays intact.
     program = f"""
 window.URMI_RUNTIME = {runtime};
-window.URMI_NAV = {{ converters: "/", cleaner: "/Cleaner" }};
+window.URMI_NAV = {{ converters: "/", cleaner: "/cleaner" }};
 {engine}
 {app_js}
 {init}
 """
+    # jsPDF and the PDF font travel inside the same program so the browser
+    # does not have to fetch them. A cross-origin script tag was blocked.
+    font_b64 = base64.b64encode((STATIC / "vendor" / "DejaVuSans-subset.ttf").read_bytes()).decode("ascii")
+    jspdf = (STATIC / "vendor" / "jspdf.umd.min.js").read_text(encoding="utf-8")
+    program = "window.URMI_PDF_FONT_B64 = " + json.dumps(font_b64) + ";\n" + jspdf + "\n" + program
     encoded = base64.b64encode(program.encode("utf-8")).decode("ascii")
 
     full = f"""<style>{css}</style>
 {body}
 <script>
 (function () {{
+  try {{
+    var parentDoc = window.parent && window.parent.document;
+    if (parentDoc && parentDoc !== document && !parentDoc.getElementById("urmi-hide-cloud-badge")) {{
+      var style = parentDoc.createElement("style");
+      style.id = "urmi-hide-cloud-badge";
+      style.textContent = "a[class*='viewerBadge'],a[href*='streamlit.io/cloud'],[class*='profileContainer']{{display:none !important;}}";
+      (parentDoc.head || parentDoc.documentElement).appendChild(style);
+    }}
+  }} catch (e) {{}}
   var bytes = Uint8Array.from(atob("{encoded}"), function (c) {{ return c.charCodeAt(0); }});
   (0, eval)(new TextDecoder("utf-8").decode(bytes));
 }})();

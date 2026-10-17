@@ -340,9 +340,28 @@ textarea {
   background: rgba(255, 255, 255, 0.65);
 }
 
-.file-box input {
-  display: block;
-  margin: 0.8rem auto 0;
+.file-pick {
+  position: relative;
+  display: inline-flex;
+  margin-top: 0.85rem;
+  cursor: pointer;
+}
+
+.file-pick input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.file-name {
+  min-height: 1.2rem;
+  margin: 0.55rem 0 0;
 }
 
 .file-box p {

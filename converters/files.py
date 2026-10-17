@@ -204,13 +204,22 @@ def _process_flextext(data: bytes, transform: Transform, out_name: str) -> tuple
             continue
         if (elem.get("type") or "").lower() != "txt":
             continue
-        if elem.text:
-            elem.text = transform(elem.text)
+        _transform_nested_text(elem, transform)
 
     xml_body = ET.tostring(root, encoding="unicode")
     if not xml_body.startswith("<?xml"):
         xml_body = '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_body
     return xml_body.encode("utf-8"), out_name, "application/xml; charset=utf-8"
+
+
+def _transform_nested_text(elem, transform: Transform) -> None:
+    """Convert this element's text and every nested text node."""
+    if elem.text:
+        elem.text = transform(elem.text)
+    for child in list(elem):
+        _transform_nested_text(child, transform)
+        if child.tail:
+            child.tail = transform(child.tail)
 
 
 def _local(tag: str) -> str:

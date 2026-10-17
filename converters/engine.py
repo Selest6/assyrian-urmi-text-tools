@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from functools import lru_cache
 
@@ -21,7 +22,8 @@ PLUS = "+"
 _STRESS_MARKS = frozenset({"\u0301"})
 # Typographic apostrophes used in г' (U+0027 is the table form).
 _GAMMA_APOSTROPHES = frozenset({"'", "\u2019", "\u2018", "\u02bc"})
-_VOWEL_BASES = frozenset("aeiouəǝAEIOUƏƎаэиоуыАЭИОУЫ")
+# ь / Ь are the Novyi spelling of /ə/, so an acute can sit on them.
+_VOWEL_BASES = frozenset("aeiouəǝAEIOUƏƎаэиоуыАЭИОУЫьЬ")
 
 
 def strip_stress(text: str) -> str:
@@ -126,10 +128,26 @@ def _apply_stress(source_slice: str, target: str) -> str:
     return unicodedata.normalize("NFC", "".join(out))
 
 
+def _continues_word(text: str, i: int) -> bool:
+    """True when the next character keeps a dotted letter inside a word."""
+    if i >= len(text):
+        return False
+    ch = text[i]
+    if unicodedata.combining(ch):
+        return True
+    return unicodedata.category(ch).startswith("L")
+
+
 def _match_at(text: str, i: int, system_id: str) -> tuple[str, int] | None:
     for tok in _token_list(system_id):
-        if text.startswith(tok, i):
-            return tok, i + len(tok)
+        if not text.startswith(tok, i):
+            continue
+        end = i + len(tok)
+        # Cereteli tense [p] is the two characters "p.". A period before a
+        # space or the end of the text is sentence punctuation, not that letter.
+        if tok.endswith(".") and not _continues_word(text, end):
+            continue
+        return tok, end
     return None
 
 
@@ -272,8 +290,11 @@ def clean_text(
     """
     Keep only characters belonging to the selected alphabet, plus '+'.
     Whitespace is always kept. If normalize_whitespace is True, every run of
-    whitespace (spaces, tabs, newlines, …) becomes a single regular space.
+    whitespace becomes a single regular space, including gaps left where
+    forbidden characters were removed.
     If keep_stress is False, acute accents on vowels are stripped (á→a, ə́→ə).
+    If keep_stress is True, an acute on a vowel of this alphabet is kept even
+    when that stressed shape is not listed on its own (Khan á, Cyrillic а́).
     If lowercase is True, capital letters are folded to lowercase.
     """
     if system_id not in SYSTEM_IDS:
@@ -311,23 +332,52 @@ def clean_text(
                 i += 1
             continue
 
-        matched = False
-        lower_slice = s[i:].lower()
-        for tok in allowed_tokens:
-            if s.startswith(tok, i) or lower_slice.startswith(tok):
-                piece = s[i : i + len(tok)]
-                if not keep_stress:
-                    piece = strip_stress(piece)
-                if lowercase:
-                    piece = piece.lower()
+        end = _clean_token_end(s, i, allowed_tokens)
+        if end is None and keep_stress:
+            grapheme = _grapheme(s, i)
+            base = strip_stress(grapheme)
+            if base and base != grapheme and _clean_token_end(base, 0, allowed_tokens) == len(base):
+                piece = grapheme.lower() if lowercase else grapheme
                 out.append(piece)
-                i += len(tok)
-                matched = True
-                break
-        if not matched:
+                i += len(grapheme)
+                continue
+        if end is None:
             i += 1
+            continue
+        if keep_stress:
+            while end < n and s[end] == "\u0301":
+                end += 1
+        piece = s[i:end]
+        if not keep_stress:
+            piece = strip_stress(piece)
+        if lowercase:
+            piece = piece.lower()
+        out.append(piece)
+        i = end
 
-    return "".join(out)
+    result = "".join(out)
+    if normalize_whitespace:
+        result = re.sub(r"\s+", " ", result)
+    return result
+
+
+def _grapheme(text: str, i: int) -> str:
+    """One base character plus the combining marks that follow it."""
+    j = i + 1
+    n = len(text)
+    while j < n and unicodedata.combining(text[j]):
+        j += 1
+    return text[i:j]
+
+
+def _clean_token_end(text: str, i: int, tokens: tuple[str, ...]) -> int | None:
+    if i >= len(text):
+        return None
+    lower = text[i:].lower()
+    for tok in tokens:
+        if text.startswith(tok, i) or lower.startswith(tok):
+            return i + len(tok)
+    return None
 
 
 # Re-export for API convenience

@@ -109,7 +109,7 @@ ROWS: list[dict[str, Any]] = [
     },
     {
         "category": "Взрывные / Stops",
-        "pron": "[tʃ] / [c] tense",
+        "pron": "[tʃ] / [c](?) tense",
         "layout": "<[б]+ AltGr",
         "assyrian": "кяп, коп",
         "expedition": ["c̣"],
@@ -390,7 +390,7 @@ ROWS: list[dict[str, Any]] = [
     {
         "category": "Гласные",
         "pron": "",
-        "layout": "w + AltGr, q + AltGr",
+        "layout": "w\u00a0+\u00a0AltGr, q + AltGr",
         "assyrian": "",
         "expedition": ["ə", "ə́", "ǝ"],
         "khan": ["ə", "ǝ"],

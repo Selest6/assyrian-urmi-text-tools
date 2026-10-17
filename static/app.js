@@ -58,7 +58,12 @@ function escapeHtml(s) {
     .replaceAll('"', "&quot;");
 }
 
-function showPage(name) {
+function pageFromLocation() {
+  const path = (location.pathname || "").toLowerCase();
+  return path.includes("clean") ? "cleaner" : "converters";
+}
+
+function showPage(name, updateUrl) {
   const pages = document.querySelectorAll(".urmi-page");
   if (!pages.length) return;
   pages.forEach((el) => {
@@ -66,17 +71,40 @@ function showPage(name) {
   });
   const scroller = document.querySelector('[data-testid="stMain"]');
   if (scroller) scroller.scrollTop = 0;
+  if (!updateUrl || !window.URMI_NAV) return;
+  const url = window.URMI_NAV[name] || "/";
+  if (location.pathname !== url) history.pushState({ urmiPage: name }, "", url);
 }
 
 function applyNav() {
   document.querySelectorAll("[data-nav]").forEach((a) => {
     if (a.dataset.bound === "1") return;
     a.dataset.bound = "1";
-    a.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      showPage(a.dataset.nav);
-    });
+    a.addEventListener(
+      "click",
+      (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        showPage(a.dataset.nav, true);
+      },
+      true
+    );
+  });
+  if (!window._urmiPopstate) {
+    window._urmiPopstate = true;
+    window.addEventListener("popstate", () => showPage(pageFromLocation(), false));
+    showPage(pageFromLocation(), false);
+  }
+}
+
+function wireFileName(root) {
+  const input = byId(root, "fileInput");
+  const name = byId(root, "fileName");
+  if (!input || !name || input.dataset.bound === "1") return;
+  input.dataset.bound = "1";
+  input.addEventListener("change", () => {
+    const file = input.files && input.files[0];
+    name.textContent = file ? file.name : "";
   });
 }
 
@@ -126,6 +154,19 @@ function stripStressJs(s) {
   return s.normalize("NFD").replace(/\u0301/g, "").normalize("NFC");
 }
 
+function stressGlyph(base) {
+  let out = "";
+  let done = false;
+  for (const ch of base.normalize("NFD")) {
+    out += ch;
+    if (!done && !/\p{M}/u.test(ch)) {
+      out += "\u0301";
+      done = true;
+    }
+  }
+  return out.normalize("NFC");
+}
+
 function renderAlphabet(root, systemId) {
   const box = byId(root, "alphabetChips");
   const meta = window.URMI_RUNTIME;
@@ -135,6 +176,22 @@ function renderAlphabet(root, systemId) {
     keepStressEl && !keepStressEl.checked
       ? meta.alphabets_nostress[systemId] || []
       : meta.alphabets[systemId] || [];
+  if (!keepStressEl || keepStressEl.checked) {
+    const vowels = window.VOWEL_BASES || new Set();
+    const seen = new Set(glyphs);
+    const extra = [];
+    for (const g of glyphs) {
+      const bare = stripStressJs(g);
+      if (bare !== g) continue;
+      if (![...bare].some((ch) => vowels.has(ch))) continue;
+      const stressed = stressGlyph(bare);
+      if (!seen.has(stressed)) {
+        seen.add(stressed);
+        extra.push(stressed);
+      }
+    }
+    glyphs = glyphs.concat(extra);
+  }
   box.innerHTML =
     glyphs.map((g) => `<span class="chip">${escapeHtml(g)}</span>`).join("") +
     `<span class="chip">+</span>`;
@@ -142,10 +199,8 @@ function renderAlphabet(root, systemId) {
 
 function loadCdnLibs() {
   const urls = [
-    "https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js",
     "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",
     "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js",
-    "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.2/jspdf.umd.min.js",
   ];
   return Promise.all(
     urls.map(
@@ -179,6 +234,7 @@ function initConvertersPage() {
   fillSystemSelect(source, meta.systems, "expedition");
   fillSystemSelect(target, meta.systems, "khan");
   wireModeTabs(root);
+  wireFileName(root);
   renderTable(root, meta.table);
   loadCdnLibs();
 
@@ -233,6 +289,7 @@ function initCleanerPage() {
   const keepStress = byId(root, "keepStress");
   fillSystemSelect(system, meta.systems, "expedition");
   wireModeTabs(root);
+  wireFileName(root);
   renderAlphabet(root, system.value);
   loadCdnLibs();
 

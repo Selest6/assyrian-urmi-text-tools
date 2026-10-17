@@ -23,7 +23,9 @@ function tokenList(systemId) {
 }
 
 const GAMMA_APOSTROPHES = new Set(["'", "\u2019", "\u2018", "\u02bc"]);
-const VOWEL_BASES = new Set([..."aeiouəǝAEIOUƏƎаэиоуыАЭИОУЫ"]);
+// ь / Ь are the Novyi spelling of /ə/, so an acute can sit on them.
+const VOWEL_BASES = new Set([..."aeiouəǝAEIOUƏƎаэиоуыАЭИОУЫьЬ"]);
+window.VOWEL_BASES = VOWEL_BASES;
 
 function foldGammaApostrophe(text) {
   let out = "";
@@ -81,9 +83,20 @@ function applyStress(sourceSlice, target) {
   return out.normalize("NFC");
 }
 
+function continuesWord(text, i) {
+  const ch = text[i];
+  if (!ch) return false;
+  return /^\p{L}$/u.test(ch) || /\p{M}/u.test(ch);
+}
+
 function matchAt(text, i, systemId) {
   for (const tok of tokenList(systemId)) {
-    if (text.startsWith(tok, i)) return [tok, i + tok.length];
+    if (!text.startsWith(tok, i)) continue;
+    const end = i + tok.length;
+    // Cereteli tense [p] is the two characters "p.". A period before a space
+    // or the end of the text is sentence punctuation, not that letter.
+    if (tok.endsWith(".") && !continuesWord(text, end)) continue;
+    return [tok, end];
   }
   return null;
 }
@@ -221,20 +234,58 @@ function cleanText(text, systemId, normalizeWhitespace = false, keepStress = tru
       }
       continue;
     }
-    const lower = s.slice(i).toLowerCase();
-    let matched = false;
-    for (const tok of tokens) {
-      if (s.startsWith(tok, i) || lower.startsWith(tok)) {
-        let piece = s.slice(i, i + tok.length);
-        if (!keepStress) piece = stripStress(piece);
-        if (lowercase) piece = piece.toLowerCase();
-        out += piece;
-        i += tok.length;
-        matched = true;
-        break;
+    let end = cleanTokenEnd(s, i, tokens);
+    if (end == null && keepStress) {
+      const grapheme = graphemeAt(s, i);
+      const base = stripStress(grapheme);
+      if (base && base !== grapheme && cleanTokenEnd(base, 0, tokens) === base.length) {
+        out += lowercase ? grapheme.toLowerCase() : grapheme;
+        i += grapheme.length;
+        continue;
       }
     }
-    if (!matched) i += 1;
+    if (end == null) {
+      i += 1;
+      continue;
+    }
+    if (keepStress) {
+      while (end < s.length && s[end] === "\u0301") end += 1;
+    }
+    let piece = s.slice(i, end);
+    if (!keepStress) piece = stripStress(piece);
+    if (lowercase) piece = piece.toLowerCase();
+    out += piece;
+    i = end;
+  }
+  return normalizeWhitespace ? collapseWhitespace(out) : out;
+}
+
+function graphemeAt(text, i) {
+  let j = i + 1;
+  while (j < text.length && /\p{M}/u.test(text[j])) j += 1;
+  return text.slice(i, j);
+}
+
+function cleanTokenEnd(text, i, tokens) {
+  if (i >= text.length) return null;
+  const lower = text.slice(i).toLowerCase();
+  for (const tok of tokens) {
+    if (text.startsWith(tok, i) || lower.startsWith(tok)) return i + tok.length;
+  }
+  return null;
+}
+
+function collapseWhitespace(text) {
+  let out = "";
+  let prev = false;
+  for (const ch of text) {
+    if (isWhitespace(ch)) {
+      if (!prev) out += " ";
+      prev = true;
+    } else {
+      prev = false;
+      out += ch;
+    }
   }
   return out;
 }
@@ -426,19 +477,96 @@ function transformFlextextXml(raw, transformFn) {
   doc.querySelectorAll("*").forEach((el) => {
     if (el.tagName.toLowerCase() !== "item") return;
     if ((el.getAttribute("type") || "").toLowerCase() !== "txt") return;
-    if (el.childNodes.length === 1 && el.childNodes[0].nodeType === 3) {
-      el.textContent = transformFn(el.textContent || "");
-    } else if (el.childNodes.length === 0 && el.textContent) {
-      el.textContent = transformFn(el.textContent);
-    } else if (![...el.childNodes].some((n) => n.nodeType === 1) && el.textContent) {
-      el.textContent = transformFn(el.textContent);
-    }
+    const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    for (const node of nodes) node.nodeValue = transformFn(node.nodeValue || "");
   });
   let outText = new XMLSerializer().serializeToString(doc);
   if (!outText.startsWith("<?xml")) {
     outText = '<?xml version="1.0" encoding="UTF-8"?>\n' + outText;
   }
   return outText;
+}
+
+async function inflateRaw(bytes) {
+  if (typeof DecompressionStream !== "function") {
+    throw new Error("Браузер не умеет читать сжатый DOCX");
+  }
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+async function unzip(buffer) {
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let eocd = -1;
+  const start = Math.max(0, bytes.length - 22 - 65535);
+  for (let i = bytes.length - 22; i >= start; i--) {
+    if (view.getUint32(i, true) === 0x06054b50) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) throw new Error("Не удалось прочитать DOCX");
+  const count = view.getUint16(eocd + 10, true);
+  let central = view.getUint32(eocd + 16, true);
+  const files = {};
+  for (let n = 0; n < count; n++) {
+    if (view.getUint32(central, true) !== 0x02014b50) throw new Error("Не удалось прочитать DOCX");
+    const method = view.getUint16(central + 10, true);
+    const compSize = view.getUint32(central + 20, true);
+    const nameLen = view.getUint16(central + 28, true);
+    const extraLen = view.getUint16(central + 30, true);
+    const commentLen = view.getUint16(central + 32, true);
+    const localOff = view.getUint32(central + 42, true);
+    const name = new TextDecoder().decode(bytes.subarray(central + 46, central + 46 + nameLen));
+    const nameLenLocal = view.getUint16(localOff + 26, true);
+    const extraLenLocal = view.getUint16(localOff + 28, true);
+    const dataStart = localOff + 30 + nameLenLocal + extraLenLocal;
+    const compressed = bytes.subarray(dataStart, dataStart + compSize);
+    let data;
+    if (method === 0) data = compressed;
+    else if (method === 8) data = await inflateRaw(compressed);
+    else throw new Error("Не удалось прочитать DOCX");
+    if (!name.endsWith("/")) files[name] = data;
+    central += 46 + nameLen + extraLen + commentLen;
+  }
+  return files;
+}
+
+function transformDocxXml(xml, transformFn) {
+  const doc = new DOMParser().parseFromString(xml, "application/xml");
+  if (doc.querySelector("parsererror")) throw new Error("Не удалось прочитать DOCX");
+  const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+  const nodes = [...doc.getElementsByTagNameNS(W, "t")];
+  for (const node of nodes) {
+    const value = node.textContent || "";
+    if (!value) continue;
+    node.textContent = transformFn(value);
+    if (/^\s|\s$/.test(node.textContent || "")) {
+      node.setAttributeNS("http://www.w3.org/XML/1998/namespace", "xml:space", "preserve");
+    }
+  }
+  let out = new XMLSerializer().serializeToString(doc);
+  if (!out.startsWith("<?xml")) {
+    out = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' + out;
+  }
+  return out;
+}
+
+async function transformDocxBuffer(buffer, transformFn) {
+  const files = await unzip(buffer);
+  const names = Object.keys(files).filter((name) => /^word\/.+\.xml$/i.test(name));
+  if (!names.length) throw new Error("Не удалось прочитать DOCX");
+  const decoder = new TextDecoder("utf-8");
+  const encoder = new TextEncoder();
+  for (const name of names) {
+    const xml = decoder.decode(files[name]);
+    if (!xml.includes("<w:t")) continue;
+    files[name] = encoder.encode(transformDocxXml(xml, transformFn));
+  }
+  return zipStore(files);
 }
 
 async function transformFile(file, transformFn, suffix) {
@@ -483,11 +611,8 @@ async function transformFile(file, transformFn, suffix) {
   }
 
   if (ext === ".docx") {
-    if (!window.mammoth) throw new Error("Не удалось загрузить обработчик DOCX");
     const buf = await file.arrayBuffer();
-    const result = await window.mammoth.extractRawText({ arrayBuffer: buf });
-    const text = String(result.value || "").replace(/(?:\r?\n)+$/g, "");
-    const bytes = buildSimpleDocx(transformFn(text));
+    const bytes = await transformDocxBuffer(buf, transformFn);
     return {
       blob: new Blob([bytes], {
         type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -554,13 +679,11 @@ function arrayBufferToBinaryString(buffer) {
   return binary;
 }
 
-async function loadPdfUnicodeFont() {
+function loadPdfUnicodeFont() {
   if (window._urmiPdfFontBinary) return window._urmiPdfFontBinary;
-  const url =
-    "https://cdn.jsdelivr.net/npm/dejavu-fonts-ttf@2.37.3/ttf/DejaVuSans.ttf";
-  const res = await fetch(url);
-  if (!res.ok) throw new Error("Не удалось загрузить шрифт для PDF");
-  const binary = arrayBufferToBinaryString(await res.arrayBuffer());
+  const b64 = window.URMI_PDF_FONT_B64;
+  if (!b64) throw new Error("Не удалось загрузить шрифт для PDF");
+  const binary = atob(b64);
   window._urmiPdfFontBinary = binary;
   return binary;
 }
