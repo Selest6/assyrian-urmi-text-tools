@@ -65,10 +65,31 @@ function browserWindow() {
   return window;
 }
 
-function normPath(path) {
-  if (!path) return "/";
-  if (path.length > 1 && path.endsWith("/")) return path.slice(0, -1);
-  return path;
+const BADGE_CSS =
+  "a[class*='viewerBadge'],a[href*='streamlit.io/cloud'],[class*='profileContainer'],[class*='viewerBadge']{display:none !important;visibility:hidden !important;pointer-events:none !important;}";
+
+function hideCloudBadge() {
+  const docs = [];
+  try {
+    if (window.parent && window.parent.document) docs.push(window.parent.document);
+  } catch (e) {}
+  if (!docs.includes(document)) docs.push(document);
+  for (const doc of docs) {
+    if (!doc.getElementById("urmi-hide-cloud-badge")) {
+      const style = doc.createElement("style");
+      style.id = "urmi-hide-cloud-badge";
+      style.textContent = BADGE_CSS;
+      (doc.head || doc.documentElement).appendChild(style);
+    }
+    doc.querySelectorAll("a[class*='viewerBadge'], a[href*='streamlit.io/cloud'], [class*='profileContainer']").forEach((el) => {
+      el.style.setProperty("display", "none", "important");
+    });
+  }
+  const parentDoc = docs[0];
+  if (parentDoc !== document && !window._urmiBadgeObs) {
+    window._urmiBadgeObs = new parentDoc.defaultView.MutationObserver(() => hideCloudBadge());
+    window._urmiBadgeObs.observe(parentDoc.documentElement, { childList: true, subtree: true });
+  }
 }
 
 function pageFromLocation() {
@@ -86,10 +107,12 @@ function showPage(name, updateUrl) {
   });
   const scroller = document.querySelector('[data-testid="stMain"]');
   if (scroller) scroller.scrollTop = 0;
-  if (!updateUrl || !window.URMI_NAV) return;
-  const url = window.URMI_NAV[name] || "/";
+  if (!updateUrl) return;
+  const url = name === "cleaner" ? "/cleaner" : "/";
   const win = browserWindow();
-  if (normPath(win.location.pathname) !== url) win.history.pushState({ urmiPage: name }, "", url);
+  let path = win.location.pathname || "/";
+  if (path.length > 1 && path.endsWith("/")) path = path.slice(0, -1);
+  if (path !== url) win.history.pushState({ urmiPage: name }, "", url);
 }
 
 function applyNav() {
@@ -106,6 +129,7 @@ function applyNav() {
       true
     );
   });
+  hideCloudBadge();
   if (!window._urmiPopstate) {
     window._urmiPopstate = true;
     const onPop = () => showPage(pageFromLocation(), false);
