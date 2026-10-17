@@ -69,19 +69,38 @@ def _process_docx(data: bytes, transform: Transform, out_name: str) -> tuple[byt
 
     doc = Document(io.BytesIO(data))
     for p in doc.paragraphs:
-        if p.text:
-            _replace_paragraph_text(p, transform(p.text))
+        _transform_paragraph(p, transform)
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
                 for p in cell.paragraphs:
-                    if p.text:
-                        _replace_paragraph_text(p, transform(p.text))
+                    _transform_paragraph(p, transform)
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue(), out_name, (
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
+
+
+def _transform_paragraph(paragraph, transform: Transform) -> None:
+    """Convert a paragraph. Keep each run's formatting when no letter crosses a run."""
+    runs = list(paragraph.runs)
+    if not runs:
+        if paragraph.text:
+            paragraph.add_run(transform(paragraph.text))
+        return
+    texts = [run.text or "" for run in runs]
+    joined = "".join(texts)
+    if not joined:
+        return
+    separate = "".join(transform(text) if text else "" for text in texts)
+    converted = transform(joined)
+    if converted == separate:
+        for run, text in zip(runs, texts):
+            if text:
+                run.text = transform(text)
+        return
+    _replace_paragraph_text(paragraph, converted)
 
 
 def _replace_paragraph_text(paragraph, new_text: str) -> None:

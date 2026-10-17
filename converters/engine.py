@@ -110,7 +110,7 @@ def _apply_case(source_slice: str, target: str) -> str:
 
 
 def _apply_stress(source_slice: str, target: str) -> str:
-    """Carry an acute onto the converted vowel. Skip targets with no vowel (ь)."""
+    """Carry an acute onto the converted vowel. Skip targets with no vowel."""
     if "\u0301" not in unicodedata.normalize("NFD", source_slice):
         return target
     if "\u0301" in unicodedata.normalize("NFD", target):
@@ -129,8 +129,8 @@ def _apply_stress(source_slice: str, target: str) -> str:
 
 
 def _continues_word(text: str, i: int) -> bool:
-    """True when the next character keeps a dotted letter inside a word."""
-    if i >= len(text):
+    """True when the character at i keeps a dotted letter inside a word."""
+    if i < 0 or i >= len(text):
         return False
     ch = text[i]
     if unicodedata.combining(ch):
@@ -138,40 +138,73 @@ def _continues_word(text: str, i: int) -> bool:
     return unicodedata.category(ch).startswith("L")
 
 
-def _match_at(text: str, i: int, system_id: str) -> tuple[str, int] | None:
+def _at_word_start(text: str, i: int) -> bool:
+    if i <= 0:
+        return True
+    prev = text[i - 1]
+    return prev == PLUS or _is_whitespace(prev) or not _continues_word(text, i - 1)
+
+
+def _period_is_letter(
+    text: str, start: int, end: int, more_after: bool | None = None
+) -> bool:
+    """Cereteli tense [p] is the two characters 'p.'.
+
+    That period is the letter when the word continues (ap.a), when 'p.' is a
+    whole word (p. slama), or when the text ends on it (kap.). A period between
+    a longer word and more text is sentence punctuation (brap. slama.).
+    """
+    if end < len(text) and (_continues_word(text, end) or text[end] == "."):
+        return True
+    j = end
+    while j < len(text) and text[j] != PLUS and not _is_whitespace(text[j]):
+        return False
+    if more_after is None:
+        k = j
+        while k < len(text) and (_is_whitespace(text[k]) or text[k] == PLUS):
+            k += 1
+        more_after = k < len(text)
+    if _at_word_start(text, start):
+        return True
+    return not more_after
+
+
+def _match_at(
+    text: str, i: int, system_id: str, more_after: bool | None = None
+) -> tuple[str, int] | None:
     for tok in _token_list(system_id):
         if not text.startswith(tok, i):
             continue
         end = i + len(tok)
-        # Cereteli tense [p] is the two characters "p.". A period before a
-        # space or the end of the text is sentence punctuation, not that letter.
-        if tok.endswith(".") and not _continues_word(text, end):
+        if tok.endswith(".") and not _period_is_letter(text, i, end, more_after):
             continue
         return tok, end
     return None
 
 
-def _match_token(text: str, i: int, system_id: str) -> tuple[str, int] | None:
+def _match_token(
+    text: str, i: int, system_id: str, more_after: bool | None = None
+) -> tuple[str, int] | None:
     """Return (matched_token, end_index) or None.
 
     Matching ignores case. A precomposed stressed vowel (á) also matches its
     base when that base is the listed sign.
     """
-    found = _match_at(text, i, system_id)
+    found = _match_at(text, i, system_id, more_after)
     if found:
         return found
     folded = text[:i] + text[i:].lower()
-    found = _match_at(folded, i, system_id)
+    found = _match_at(folded, i, system_id, more_after)
     if found:
         return found
     base = strip_stress(text[i])
     if base == text[i]:
         return None
     rewritten = text[:i] + base + text[i + 1 :]
-    found = _match_at(rewritten, i, system_id)
+    found = _match_at(rewritten, i, system_id, more_after)
     if found:
         return found
-    return _match_at(rewritten[:i] + rewritten[i:].lower(), i, system_id)
+    return _match_at(rewritten[:i] + rewritten[i:].lower(), i, system_id, more_after)
 
 
 def _word_case(letters: list[str]) -> str:
@@ -186,13 +219,15 @@ def _word_case(letters: list[str]) -> str:
     return "mixed"
 
 
-def _convert_segment(segment: str, source: str, target: str) -> str:
+def _convert_segment(
+    segment: str, source: str, target: str, more_after: bool = False
+) -> str:
     """Convert one word. Case follows the word, not each letter."""
     pieces: list[dict] = []
     i = 0
     n = len(segment)
     while i < n:
-        matched = _match_token(segment, i, source)
+        matched = _match_token(segment, i, source, more_after)
         if matched is None:
             pieces.append({"raw": segment[i]})
             i += 1
@@ -275,7 +310,10 @@ def convert_text(text: str, source: str, target: str) -> str:
         j = i + 1
         while j < n and s[j] != PLUS and not _is_whitespace(s[j]):
             j += 1
-        out.append(_convert_segment(s[i:j], source, target))
+        k = j
+        while k < n and (_is_whitespace(s[k]) or s[k] == PLUS):
+            k += 1
+        out.append(_convert_segment(s[i:j], source, target, more_after=k < n))
         i = j
     return unicodedata.normalize("NFC", "".join(out))
 
@@ -376,7 +414,10 @@ def _clean_token_end(text: str, i: int, tokens: tuple[str, ...]) -> int | None:
     lower = text[i:].lower()
     for tok in tokens:
         if text.startswith(tok, i) or lower.startswith(tok):
-            return i + len(tok)
+            end = i + len(tok)
+            if tok.endswith(".") and not _period_is_letter(text, i, end):
+                continue
+            return end
     return None
 
 

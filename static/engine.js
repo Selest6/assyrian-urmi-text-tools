@@ -89,31 +89,52 @@ function continuesWord(text, i) {
   return /^\p{L}$/u.test(ch) || /\p{M}/u.test(ch);
 }
 
-function matchAt(text, i, systemId) {
+function atWordStart(text, i) {
+  if (i <= 0) return true;
+  const prev = text[i - 1];
+  return prev === PLUS || isWhitespace(prev) || !continuesWord(text, i - 1);
+}
+
+function periodIsLetter(text, start, end, moreAfter) {
+  // Cereteli tense [p] is "p.". The period is the letter inside a word, when
+  // "p." is a whole word, or at the end of the text. Before another word it
+  // is sentence punctuation: "brap. slama."
+  if (end < text.length && (continuesWord(text, end) || text[end] === ".")) return true;
+  let j = end;
+  while (j < text.length && text[j] !== PLUS && !isWhitespace(text[j])) return false;
+  let followed = moreAfter;
+  if (followed == null) {
+    let k = j;
+    while (k < text.length && (isWhitespace(text[k]) || text[k] === PLUS)) k += 1;
+    followed = k < text.length;
+  }
+  if (atWordStart(text, start)) return true;
+  return !followed;
+}
+
+function matchAt(text, i, systemId, moreAfter) {
   for (const tok of tokenList(systemId)) {
     if (!text.startsWith(tok, i)) continue;
     const end = i + tok.length;
-    // Cereteli tense [p] is the two characters "p.". A period before a space
-    // or the end of the text is sentence punctuation, not that letter.
-    if (tok.endsWith(".") && !continuesWord(text, end)) continue;
+    if (tok.endsWith(".") && !periodIsLetter(text, i, end, moreAfter)) continue;
     return [tok, end];
   }
   return null;
 }
 
-function matchToken(text, i, systemId) {
-  let found = matchAt(text, i, systemId);
+function matchToken(text, i, systemId, moreAfter) {
+  let found = matchAt(text, i, systemId, moreAfter);
   if (found) return found;
   const lower = text.slice(0, i) + text.slice(i).toLowerCase();
-  found = matchAt(lower, i, systemId);
+  found = matchAt(lower, i, systemId, moreAfter);
   if (found) return found;
   const base = stripStress(text[i] || "");
   if (!base || base === text[i]) return null;
   const rewritten = text.slice(0, i) + base + text.slice(i + 1);
-  found = matchAt(rewritten, i, systemId);
+  found = matchAt(rewritten, i, systemId, moreAfter);
   if (found) return found;
   const rewrittenLower = rewritten.slice(0, i) + rewritten.slice(i).toLowerCase();
-  return matchAt(rewrittenLower, i, systemId);
+  return matchAt(rewrittenLower, i, systemId, moreAfter);
 }
 
 function wordCase(letters) {
@@ -134,12 +155,12 @@ function upperFirstLetter(text) {
   return text;
 }
 
-function convertSegment(segment, source, target) {
+function convertSegment(segment, source, target, moreAfter) {
   const rt = window.URMI_RUNTIME;
   const pieces = [];
   let i = 0;
   while (i < segment.length) {
-    const m = matchToken(segment, i, source);
+    const m = matchToken(segment, i, source, moreAfter);
     if (!m) {
       pieces.push({ raw: segment[i] });
       i += 1;
@@ -191,7 +212,9 @@ function convertText(text, source, target) {
     }
     let j = i + 1;
     while (j < s.length && s[j] !== PLUS && !isWhitespace(s[j])) j += 1;
-    out += convertSegment(s.slice(i, j), source, target);
+    let k = j;
+    while (k < s.length && (isWhitespace(s[k]) || s[k] === PLUS)) k += 1;
+    out += convertSegment(s.slice(i, j), source, target, k < s.length);
     i = j;
   }
   return out.normalize("NFC");
@@ -270,7 +293,11 @@ function cleanTokenEnd(text, i, tokens) {
   if (i >= text.length) return null;
   const lower = text.slice(i).toLowerCase();
   for (const tok of tokens) {
-    if (text.startsWith(tok, i) || lower.startsWith(tok)) return i + tok.length;
+    if (text.startsWith(tok, i) || lower.startsWith(tok)) {
+      const end = i + tok.length;
+      if (tok.endsWith(".") && !periodIsLetter(text, i, end, null)) continue;
+      return end;
+    }
   }
   return null;
 }
@@ -535,17 +562,46 @@ async function unzip(buffer) {
   return files;
 }
 
+function paragraphAncestor(node) {
+  let p = node.parentNode;
+  while (p && p.localName !== "p") p = p.parentNode;
+  return p;
+}
+
+function setDocxText(node, value) {
+  node.textContent = value;
+  if (/^\s|\s$/.test(value || "")) {
+    node.setAttributeNS("http://www.w3.org/XML/1998/namespace", "xml:space", "preserve");
+  }
+}
+
 function transformDocxXml(xml, transformFn) {
   const doc = new DOMParser().parseFromString(xml, "application/xml");
   if (doc.querySelector("parsererror")) throw new Error("Не удалось прочитать DOCX");
   const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
   const nodes = [...doc.getElementsByTagNameNS(W, "t")];
+  const groups = new Map();
   for (const node of nodes) {
-    const value = node.textContent || "";
-    if (!value) continue;
-    node.textContent = transformFn(value);
-    if (/^\s|\s$/.test(node.textContent || "")) {
-      node.setAttributeNS("http://www.w3.org/XML/1998/namespace", "xml:space", "preserve");
+    const key = paragraphAncestor(node) || node;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(node);
+  }
+  for (const group of groups.values()) {
+    const texts = group.map((node) => node.textContent || "");
+    const joined = texts.join("");
+    if (!joined) continue;
+    const separate = texts.map((value) => (value ? transformFn(value) : "")).join("");
+    const converted = transformFn(joined);
+    if (converted === separate) {
+      group.forEach((node, index) => {
+        if (!texts[index]) return;
+        setDocxText(node, transformFn(texts[index]));
+      });
+    } else {
+      setDocxText(group[0], converted);
+      for (let index = 1; index < group.length; index++) {
+        if (texts[index]) group[index].textContent = "";
+      }
     }
   }
   let out = new XMLSerializer().serializeToString(doc);
@@ -567,6 +623,31 @@ async function transformDocxBuffer(buffer, transformFn) {
     files[name] = encoder.encode(transformDocxXml(xml, transformFn));
   }
   return zipStore(files);
+}
+
+function pdfItemsToText(items) {
+  let text = "";
+  let prev = null;
+  for (const it of items || []) {
+    if (!it || typeof it.str !== "string" || it.str === "") continue;
+    if (prev) {
+      const y = it.transform ? it.transform[5] : 0;
+      const py = prev.transform ? prev.transform[5] : 0;
+      const h = Math.max(it.height || 0, prev.height || 0, 1);
+      const newLine = prev.hasEOL || Math.abs(y - py) > h * 0.6;
+      if (newLine) {
+        if (!text.endsWith("\n")) text += "\n";
+      } else {
+        const x = it.transform ? it.transform[4] : 0;
+        const px = prev.transform ? prev.transform[4] : 0;
+        const gap = x - (px + (prev.width || 0));
+        if (gap > h * 0.15 && !prev.str.endsWith(" ") && !it.str.startsWith(" ")) text += " ";
+      }
+    }
+    text += it.str;
+    prev = it;
+  }
+  return text;
 }
 
 async function transformFile(file, transformFn, suffix) {
@@ -656,7 +737,7 @@ async function transformFile(file, transformFn, suffix) {
     for (let p = 1; p <= pdf.numPages; p++) {
       const page = await pdf.getPage(p);
       const content = await page.getTextContent();
-      parts.push(content.items.map((it) => it.str).join(" "));
+      parts.push(pdfItemsToText(content.items));
     }
     const converted = transformFn(parts.join("\n"));
     const outBlob = await buildPdfBlob(converted);

@@ -58,9 +58,24 @@ function escapeHtml(s) {
     .replaceAll('"', "&quot;");
 }
 
+function browserWindow() {
+  try {
+    if (window.parent && window.parent !== window && window.parent.location) return window.parent;
+  } catch (e) {}
+  return window;
+}
+
+function normPath(path) {
+  if (!path) return "/";
+  if (path.length > 1 && path.endsWith("/")) return path.slice(0, -1);
+  return path;
+}
+
 function pageFromLocation() {
-  const path = (location.pathname || "").toLowerCase();
-  return path.includes("clean") ? "cleaner" : "converters";
+  const win = browserWindow();
+  const path = ((win.location && win.location.pathname) || "").toLowerCase();
+  const iframe = (location.pathname || "").toLowerCase();
+  return path.includes("clean") || iframe.includes("clean") ? "cleaner" : "converters";
 }
 
 function showPage(name, updateUrl) {
@@ -73,7 +88,8 @@ function showPage(name, updateUrl) {
   if (scroller) scroller.scrollTop = 0;
   if (!updateUrl || !window.URMI_NAV) return;
   const url = window.URMI_NAV[name] || "/";
-  if (location.pathname !== url) history.pushState({ urmiPage: name }, "", url);
+  const win = browserWindow();
+  if (normPath(win.location.pathname) !== url) win.history.pushState({ urmiPage: name }, "", url);
 }
 
 function applyNav() {
@@ -92,7 +108,10 @@ function applyNav() {
   });
   if (!window._urmiPopstate) {
     window._urmiPopstate = true;
-    window.addEventListener("popstate", () => showPage(pageFromLocation(), false));
+    const onPop = () => showPage(pageFromLocation(), false);
+    window.addEventListener("popstate", onPop);
+    const win = browserWindow();
+    if (win !== window) win.addEventListener("popstate", onPop);
     showPage(pageFromLocation(), false);
   }
 }
