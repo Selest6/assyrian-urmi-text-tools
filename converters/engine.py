@@ -265,13 +265,14 @@ def convert_text(text: str, source: str, target: str) -> str:
 def clean_text(
     text: str,
     system_id: str,
-    keep_whitespace: bool = True,
+    normalize_whitespace: bool = False,
     keep_stress: bool = True,
     lowercase: bool = False,
 ) -> str:
     """
     Keep only characters belonging to the selected alphabet, plus '+'.
-    Whitespace is kept by default (structural, not a foreign letter).
+    Whitespace is always kept. If normalize_whitespace is True, every run of
+    whitespace (spaces, tabs, newlines, …) becomes a single regular space.
     If keep_stress is False, acute accents on vowels are stripped (á→a, ə́→ə).
     If lowercase is True, capital letters are folded to lowercase.
     """
@@ -300,9 +301,14 @@ def clean_text(
             out.append(PLUS)
             i += 1
             continue
-        if keep_whitespace and _is_whitespace(ch):
-            out.append(ch)
-            i += 1
+        if _is_whitespace(ch):
+            if normalize_whitespace:
+                while i < n and _is_whitespace(s[i]):
+                    i += 1
+                out.append(" ")
+            else:
+                out.append(ch)
+                i += 1
             continue
 
         matched = False

@@ -246,7 +246,7 @@ function initCleanerPage() {
     byId(root, "output").value = cleanText(
       byId(root, "input").value,
       system.value,
-      byId(root, "keepWs").checked,
+      byId(root, "normalizeWs").checked,
       keepStress.checked,
       byId(root, "lowercase").checked
     );
@@ -277,7 +277,7 @@ function initCleanerPage() {
           cleanText(
             t,
             system.value,
-            byId(root, "keepWs").checked,
+            byId(root, "normalizeWs").checked,
             keepStress.checked,
             byId(root, "lowercase").checked
           ),

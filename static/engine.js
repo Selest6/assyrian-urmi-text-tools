@@ -184,7 +184,7 @@ function convertText(text, source, target) {
   return out.normalize("NFC");
 }
 
-function cleanText(text, systemId, keepWhitespace = true, keepStress = true, lowercase = false) {
+function cleanText(text, systemId, normalizeWhitespace = false, keepStress = true, lowercase = false) {
   if (!text) return text;
   let s = foldGammaApostrophe(nfc(text));
   if (!keepStress) s = stripStress(s);
@@ -211,9 +211,14 @@ function cleanText(text, systemId, keepWhitespace = true, keepStress = true, low
       i += 1;
       continue;
     }
-    if (keepWhitespace && isWhitespace(ch)) {
-      out += ch;
-      i += 1;
+    if (isWhitespace(ch)) {
+      if (normalizeWhitespace) {
+        while (i < s.length && isWhitespace(s[i])) i += 1;
+        out += " ";
+      } else {
+        out += ch;
+        i += 1;
+      }
       continue;
     }
     const lower = s.slice(i).toLowerCase();
