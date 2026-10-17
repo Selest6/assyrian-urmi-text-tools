@@ -267,11 +267,13 @@ def clean_text(
     system_id: str,
     keep_whitespace: bool = True,
     keep_stress: bool = True,
+    lowercase: bool = False,
 ) -> str:
     """
     Keep only characters belonging to the selected alphabet, plus '+'.
     Whitespace is kept by default (structural, not a foreign letter).
     If keep_stress is False, acute accents on vowels are stripped (á→a, ə́→ə).
+    If lowercase is True, capital letters are folded to lowercase.
     """
     if system_id not in SYSTEM_IDS:
         raise ValueError(f"Unknown system: {system_id}")
@@ -308,7 +310,11 @@ def clean_text(
         for tok in allowed_tokens:
             if s.startswith(tok, i) or lower_slice.startswith(tok):
                 piece = s[i : i + len(tok)]
-                out.append(piece if keep_stress else strip_stress(piece))
+                if not keep_stress:
+                    piece = strip_stress(piece)
+                if lowercase:
+                    piece = piece.lower()
+                out.append(piece)
                 i += len(tok)
                 matched = True
                 break

@@ -184,7 +184,7 @@ function convertText(text, source, target) {
   return out.normalize("NFC");
 }
 
-function cleanText(text, systemId, keepWhitespace = true, keepStress = true) {
+function cleanText(text, systemId, keepWhitespace = true, keepStress = true, lowercase = false) {
   if (!text) return text;
   let s = foldGammaApostrophe(nfc(text));
   if (!keepStress) s = stripStress(s);
@@ -220,8 +220,10 @@ function cleanText(text, systemId, keepWhitespace = true, keepStress = true) {
     let matched = false;
     for (const tok of tokens) {
       if (s.startsWith(tok, i) || lower.startsWith(tok)) {
-        const piece = s.slice(i, i + tok.length);
-        out += keepStress ? piece : stripStress(piece);
+        let piece = s.slice(i, i + tok.length);
+        if (!keepStress) piece = stripStress(piece);
+        if (lowercase) piece = piece.toLowerCase();
+        out += piece;
         i += tok.length;
         matched = true;
         break;

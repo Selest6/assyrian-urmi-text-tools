@@ -247,7 +247,8 @@ function initCleanerPage() {
       byId(root, "input").value,
       system.value,
       byId(root, "keepWs").checked,
-      keepStress.checked
+      keepStress.checked,
+      byId(root, "lowercase").checked
     );
     toast(root, "Готово");
   });
@@ -277,7 +278,8 @@ function initCleanerPage() {
             t,
             system.value,
             byId(root, "keepWs").checked,
-            keepStress.checked
+            keepStress.checked,
+            byId(root, "lowercase").checked
           ),
         "cleaned"
       );
