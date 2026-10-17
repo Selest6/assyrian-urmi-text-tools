@@ -351,7 +351,8 @@ ROWS: list[dict[str, Any]] = [
         "khan": ["e"],
         "cereteli": ["e", "é"],
         "novyi": ["e"],
-        "cyrillic": ["э"],
+        # э is the table letter; е / ё are common Cyrillic spellings of the same vowel
+        "cyrillic": ["э", "е", "ё"],
     },
     {
         "category": "Гласные",

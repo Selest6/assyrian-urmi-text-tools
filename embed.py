@@ -92,6 +92,13 @@ HIDE_CHROME = """
     padding-top: 0 !important;
     margin-top: 0 !important;
   }
+
+  /* Keep page content clear of Streamlit Cloud's corner badge when it is in-frame */
+  a[href*="streamlit.io/cloud"],
+  [class*="viewerBadge"],
+  [data-testid="viewerBadge"] {
+    display: none !important;
+  }
 </style>
 """
 
